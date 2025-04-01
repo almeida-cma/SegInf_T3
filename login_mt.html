@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Seguro</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #222; color: white; }
+        .container { width: 300px; margin: auto; padding: 20px; background: #333; border-radius: 10px; }
+        input { width: 100%; margin: 5px 0; padding: 10px; }
+        button { width: 100%; padding: 10px; background: green; color: white; border: none; }
+        #captcha, #logs { margin: 10px 0; }
+        #logScreen { background: #444; padding: 20px; border-radius: 10px; position: fixed; top: 10px; right: 10px; width: 300px; height: 90vh; overflow-y: auto; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); }
+        .modal-content { background: #333; padding: 20px; border-radius: 10px; width: 300px; margin: 15% auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Bem-vindo!</h2>
+        <button onclick="openModal('loginModal')">Login</button>
+        <button onclick="openModal('registerModal')">Registrar</button>
+    </div>
+
+    <div class="modal" id="loginModal">
+        <div class="modal-content">
+            <h2>Login</h2>
+            <input type="text" id="loginUsername" placeholder="Usuário" required>
+            <input type="password" id="loginPassword" placeholder="Senha" required>
+            <div id="captcha"></div>
+            <button onclick="login()">Entrar</button>
+            <button onclick="closeModal('loginModal')">Fechar</button>
+        </div>
+    </div>
+
+    <div class="modal" id="registerModal">
+        <div class="modal-content">
+            <h2>Registrar</h2>
+            <input type="text" id="registerUsername" placeholder="Usuário" required>
+            <input type="password" id="registerPassword" placeholder="Senha" required>
+            <input type="password" id="confirmPassword" placeholder="Confirme a Senha" required>
+            <div id="registerCaptcha"></div>
+            <button onclick="register()">Registrar</button>
+            <button onclick="closeModal('registerModal')">Fechar</button>
+        </div>
+    </div>
+
+    <div id="logScreen">
+        <h2>Registros</h2>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        let loginAttempts = {}; // Limitação de tentativas
+        const MAX_ATTEMPTS = 3; // Tentativas máximas
+        const BLOCK_TIME = 5 * 60 * 1000; // Tempo de bloqueio em milissegundos (5 minutos)
+        
+        function openModal(id) {
+            document.getElementById(id).style.display = 'block';
+            generateCaptcha(id);
+            clearModalFields(id);
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function clearModalFields(id) {
+            document.querySelectorAll(`#${id} input`).forEach(input => input.value = '');
+        }
+
+        function generateCaptcha(id) {
+            let num1 = Math.floor(Math.random() * 10) + 1;
+            let num2 = Math.floor(Math.random() * 10) + 1;
+            let captchaField = `<p>Resolva: ${num1} + ${num2} = ?</p><input type='text' id='${id}CaptchaInput' placeholder='Digite a resposta' required>`;
+            document.getElementById(id === 'loginModal' ? 'captcha' : 'registerCaptcha').innerHTML = captchaField;
+            sessionStorage.setItem(id + 'Captcha', num1 + num2);
+        }
+
+        function validateCaptcha(id) {
+            let userInput = document.getElementById(id + 'CaptchaInput').value;
+            let correctCaptcha = sessionStorage.getItem(id + 'Captcha');
+            return userInput == correctCaptcha;
+        }
+
+        function saveLog(action, user) {
+            let logs = JSON.parse(localStorage.getItem("logs")) || [];
+            logs.push({ user, action, time: new Date().toLocaleString() });
+            localStorage.setItem("logs", JSON.stringify(logs));
+            displayLogs();
+        }
+
+        function displayLogs() {
+            let logs = JSON.parse(localStorage.getItem("logs")) || [];
+            document.getElementById("logs").innerHTML = logs.map(log => `<p>${log.time} - ${log.user}: ${log.action}</p>`).join('');
+        }
+
+        async function hashPassword(password) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password);
+            const hash = await crypto.subtle.digest("SHA-256", data);
+            return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function register() {
+            let username = document.getElementById("registerUsername").value;
+            let password = document.getElementById("registerPassword").value;
+            let confirmPassword = document.getElementById("confirmPassword").value;
+            if (!username || localStorage.getItem(username) || password !== confirmPassword || !validateCaptcha('registerModal')) {
+                alert("Erro no registro: usuário já existe, senha inválida ou captcha incorreto.");
+                return;
+            }
+            let hash = await hashPassword(password);
+            localStorage.setItem(username, hash);
+            saveLog("Registro realizado", username);
+            alert("Registro bem-sucedido!");
+            closeModal('registerModal');
+        }
+
+        async function login() {
+            let username = document.getElementById("loginUsername").value;
+            let password = document.getElementById("loginPassword").value;
+            let storedHash = localStorage.getItem(username);
+
+            if (!storedHash || !validateCaptcha('loginModal')) {
+                alert("Usuário não encontrado ou captcha incorreto!");
+                return;
+            }
+
+            if (!loginAttempts[username]) loginAttempts[username] = { attempts: 0, blockUntil: 0 };
+
+            // Verificar se o usuário está bloqueado
+            if (loginAttempts[username].blockUntil > Date.now()) {
+                let timeLeft = (loginAttempts[username].blockUntil - Date.now()) / 1000;
+                alert(`Você está bloqueado por ${Math.ceil(timeLeft)} segundos devido a muitas tentativas erradas.`);
+                return;
+            }
+
+            if (loginAttempts[username].attempts >= MAX_ATTEMPTS) {
+                loginAttempts[username].blockUntil = Date.now() + BLOCK_TIME; // Bloquear por 5 minutos
+                saveLog("Conta bloqueada por tentativas excessivas", username);
+                alert("Muitas tentativas! Você está bloqueado por 5 minutos.");
+                return;
+            }
+
+            let hash = await hashPassword(password);
+            if (hash !== storedHash) {
+                loginAttempts[username].attempts++;
+                saveLog("Falha no login", username);
+                alert(`Senha incorreta! Tentativas restantes: ${MAX_ATTEMPTS - loginAttempts[username].attempts}`);
+                return;
+            }
+
+            loginAttempts[username].attempts = 0; // Resetar tentativas após sucesso
+
+            // Geração e verificação do código de 2FA
+            let code = Math.floor(100000 + Math.random() * 900000);
+            sessionStorage.setItem("2FA", code);
+            saveLog("Código 2FA gerado", username);
+            alert("Código de verificação: " + code);
+            let userCode = prompt("Digite o código enviado:");
+
+            if (userCode == code) {
+                saveLog("Login bem-sucedido", username);
+                alert("Login realizado com sucesso!");
+                closeModal('loginModal');
+            } else {
+                saveLog("Erro na autenticação 2FA", username);
+                alert("Código incorreto!");
+            }
+        }
+
+        displayLogs();
+    </script>
+</body>
+</html>
