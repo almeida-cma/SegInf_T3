@@ -1,38 +1,29 @@
 # SegInf_T3
 Plano de contingência
 
+-- Verifica e cria o banco de dados se não existir
+CREATE DATABASE IF NOT EXISTS seguro;
 
-Criar DATABASE = seguro
+-- Usa o banco de dados
+USE seguro;
 
-RODAR SCRIPT TABELA:
-
-CREATE TABLE usuarios (
-
+-- Verifica se a tabela 'usuarios' já existe antes de criá-la
+CREATE TABLE IF NOT EXISTS usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    
     username VARCHAR(50) NOT NULL,
-    
-    email VARCHAR(100) NOT NULL,
-    
+    email VARCHAR(100) NOT NULL UNIQUE,
     senha VARCHAR(255) NOT NULL,
-    
     autenticacao_habilitada TINYINT(1) DEFAULT 0,
-    
     codigo_autenticacao INT,
-    
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-
 );
+
 
 Sugestões de Melhorias:
 
-
 Usar Prepared Statements: Protege contra injeção de SQL.
-
 Verificar Sessão em Todas as Páginas: Assegurar que todas as páginas que requerem autenticação verifiquem se a sessão está ativa.
-
 Redirecionamento Adequado Após Logout: Assegurar que todas as páginas redirecionem corretamente após o logout.
-
 Uso de HTTPS: Configurar o servidor para usar HTTPS (No caso do local da homologação configurar o Xampp)
 
 
